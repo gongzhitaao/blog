@@ -1,0 +1,218 @@
+#+TITLE: Useless Parameters
+#+OPTIONS: toc:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://gongzhitaao.org/orgcss/org.css" />
+
+#+BEGIN_abstract
+In this article, I empirically evaluate the impact of disturbing
+(i.e., randomly shuffling/re-initializing) the carefully selected
+parameters in neural network.  And surprisingly, I got some
+/intriguing/ results: a) biases do not matter as long as they remain
+small; b) useless weights do not matter.
+#+END_abstract
+
+#+TOC: headings:2
+
+* Introduction
+
+  A neural network usually has a large number of parameters
+  cite:han2015-1.
+
+  | Network        | Parameters |
+  |----------------+------------|
+  | LetNet-300-100 | 1070KB     |
+  | LetNet-5       | 1729KB     |
+  | AlexNet        | 240MB      |
+  | VGG-16         | 552MB      |
+
+  It is really hard to imagine that changing a single weight would
+  have a serious impact on the whole model.  The interesting question
+  is how much is too much.
+
+  There are many ways to compress a network
+  cite:iandola2016,han2015-1.  Some could achieve astonishing
+  compression ratio without losing accuracy.  Here we do not use any
+  advanced techniques, simply resetting the raw parameters to see how
+  much impact each parameter may have.
+
+* Toy Experiment
+
+   In this toy experiment, I use a simple 3-layer fully connected
+   feed-forward network.
+   - Data set: MNIST
+   - Layer sizes: (28x28, 100, 100, 10)
+   - Activation: sigmoid for hidden layers and softmax for output.
+   - Learning algorithm: Adagrad
+   - Loss function: categorical crossentropy
+   - Platform: Keras.
+   - Result: after 100 epochs, test accuracy is around 97%.
+
+** Parameter distribution
+
+   Figure [[fig:fc100-100-10-weight-dist]] shows the parameter
+   distribution of each layer.  Left are weight distribution, right
+   bias distribution.  Top are distribution before training, bottom
+   after training.
+
+   #+CAPTION: Parameter distribution of each layer.
+   #+NAME: fig:fc100-100-10-weight-dist
+   [[file:img/fc100-100-10-weight-per-layer.png]]
+
+   The parameters are centered around zero, as in many other reports.
+
+   A few things to note:
+   - Before training (epoch 0), as layers go deeper, the weights are
+     more dispersed which is as expected since Keras by default uses
+     [[https://github.com/fchollet/keras/blob/master/keras/initializations.py#L50][glorot algorithm]] to initialize the weight.
+   - It is interesting that the distribution in output layer[fn:1] are
+     bimodal, even before training.  Are we going to see multi-modal
+     distribution for deeper layers?
+   - The weight distribution of each layer does not change much, if
+     any.  So what is being learned during training?  Does it imply
+     that we could avoid the training at all by a /clever/
+     initialization?
+
+** How much being learned?
+
+   Consider a single weight, before training its value is randomly
+   initialized to \(w\), and after training the value changes to
+   \(w^\prime\).  I define the /change scale/ \(c\) as
+
+   \[c = \left\vert\frac{w^\prime - w}{w}\right\vert\times 100\%\]
+
+   Figure [[fig:fc100-100-10-how-much-kde]] shows the density plot of
+   change scale for each layer.  Left is weight matrix, right bias.
+   Top is the absolute change, i.e., \(w^\prime - w\), bottom the
+   change scale.
+
+   #+CAPTION: How much being learned?
+   #+NAME: fig:fc100-100-10-how-much-kde
+   [[file:img/fc100-100-10-weight-diff-kde.png]]
+
+   Figure [[fig:fc100-100-10-how-much-box]] shows the box plot of change
+   scale.
+
+   #+CAPTION: The actual learner?
+   #+NAME: fig:fc100-100-10-how-much-box
+   [[file:img/fc100-100-10-weight-diff-box.png]]
+
+   Those dots in Figure [[fig:fc100-100-10-how-much-box]] are
+   /outliers/. i.e., weights that changed dramatically.
+
+   From the above two plots of change scale, we could see that a
+   portion of the weights do not change much.  There are however some
+   outliers that changed dramatically.  So my hypothesis is that the
+   improvement of the whole network accuracy is due to those outliers.
+   To empirically study the hypothesis, we could randomly disturb
+   those useless parameters, i.e., we can randomly /shuffle/ or
+   /re-initialize/ to see the impact on accuracy.
+
+** Disturb biases
+
+   The empirical conclusion is that biases does not matter in the
+   final evaluation so long as they remain relatively small, which
+   means they don't learn anything during the training process.  We
+   probably need to rethink the role biases play in deep network.
+
+   1. Random shuffling biases does not affect accuracy, if any.  For
+      each layer the evaluation is repeated 100 times.  The result is
+      show in Table [[tab:fc100-100-10-shuffle-bias]][fn:2].
+
+      #+CAPTION: Shuffling Biases
+      #+NAME: tab:fc100-100-10-shuffle-bias
+      |                   | Accuracy after shuffling |
+      |-------------------+--------------------------|
+      | Layer 0           | 0.9721 (std: 0.0005204)  |
+      | Layer 1           | 0.9749 (std: 0.0001272)  |
+      | Layer 2           | 0.9747 (std: 0.0001808)  |
+      |-------------------+--------------------------|
+      | All layer         | 0.9720 (std: 0.0005995)  |
+      |-------------------+--------------------------|
+      | Original accuracy | 0.9748                   |
+
+   2. Randomly resetting the biases /does/ affect accuracy only if
+      biases are too large.  Small biases, however, do not make a
+      difference, if any.  During the experiment, the biases are
+      randomly reset to the range\((0, U)\).  I tested 100
+      experiments for each \(U\) value.  The result is shown in Figure
+      [[fig:fc100-100-10-reset-bias]].  Specifically, resetting all biases
+      to zeros does not affect accuracy at all.
+
+      #+CAPTION: Resetting Biases
+      #+NAME: fig:fc100-100-10-reset-bias
+      [[file:img/fc100-100-10-reset-bias.png]]
+
+** Disturb weights
+
+   There are usually a large number of weights needed to be optimized
+   in neural network models.  Even in this simple 3-layer toy model,
+   we have 98400 to find-tune.  The /useless/ weights being shuffled
+   are selected by their change scale.  The intuition is that those
+   weights that do not change much during training are /useless/ since
+   they don't learn anything about the data.
+
+   Given a change scale threshold \(T\), the useless weights are those
+   with change scale less than or equal to \(T\), i.e., \(c\leq T\).
+   In the following plots, Y Axis is accuracy, X Axis is change scale.
+
+   1. Random shuffling useless weights does affect the accuracy only
+      if we have too high a threshold.  Figure
+      [[fig:fc100-100-10-shuffle-weight]] shows the impact of shuffling on
+      accuracy against different threshold values.  The top X Axis
+      shows the percent of weights being shuffled.
+
+      #+CAPTION: Shuffling useless weights
+      #+NAME: fig:fc100-100-10-shuffle-weight
+      [[file:img/fc100-100-10-shuffle-weight.png]]
+
+   2. I'm only interested in resetting weights to zero.  As biases,
+      resetting a small portion of the weights has a negligible impact
+      on accuracy.  Figure [[fig:fc100-100-10-reset-weight]] shows the
+      accuracy after resetting useless weights.  \(U = 0\) corresponds
+      to resetting weights to zero, \(U = 1\) resetting weights to
+      random values in range \([0, 1)\).
+
+      #+CAPTION: Resetting useless weights
+      #+NAME: fig:fc100-100-10-reset-weight
+      [[file:img/fc100-100-10-reset-weight.png]]
+
+** Final Model
+
+   Next we will see how much we could compress the model without a
+   serious side affect on accuracy.
+
+   1. Reset all biases to zero
+   2. Reset weights in each layer separately with change scale less
+      than 20%.
+
+
+   The result is summarized in Figure [[fig:compressed-model]].
+
+   #+CAPTION: Compressed model
+   #+NAME: fig:compressed-model
+   [[file:img/final_result.png]]
+
+   The lower X Axis shows the compress ratio, the upper X Axis shows
+   the change scale criteria.
+
+* Conclusion
+
+  Experiment on this toy example network shows that change scale is a
+  simple yet efficient criteria to prune useless weights.  However the
+  compression ratio of just ~0.2 is simply trivial.  Other work could
+  achieve 50x compression without losing accuracy.  An interesting
+  side note is that biases does not matter much after training.
+
+#+BIBLIOGRAPHY: /home/gongzhitaao/Dropbox/bibliography/nn.bib plain option:-nobibsource limit:t option:-nokeywords
+
+* Footnotes
+
+[fn:1] By "output layer", I actually mean the layer before softmax,
+which has no parameters.
+
+[fn:2] "Layer X" means we only disturb parameters in layer X, leaving
+other layers unchanged.  "All layers" means we disturb parameters
+across layers all at once.  The same for all the other tables and
+figures.
+
+#  LocalWords:  toc css href vert frac fc kde outliers leq fn softmax
+#  LocalWords:  MNIST

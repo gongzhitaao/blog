@@ -1,0 +1,36 @@
+<!-- -*- mode: web; -*- -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta  charset="utf-8">
+    <meta  name="viewport" content="width=device-width, initial-scale=1">
+    <title>Zhitao Gong</title>
+    <meta  name="author" content="Zhitao Gong">
+    <link rel="stylesheet" href="css/style.css">
+  </head>
+  <body>
+    <header>
+      <h1 class="title">Zhitao Gong</h1>
+    </header>
+
+    <div class="article-list">
+      <ul>
+        {{#docs}}
+          <li><img src="{{img}}" /><a class="article-title" href="{{href}}">{{title}}</a></li>
+        {{/docs}}
+      </ul>
+    </div>
+
+    <hr/>
+
+    <div class="article-list">
+      <ul>
+        {{#articles}}
+          <li><span class="article-timestamp">{{timestamp}}</span>
+            <a class="article-title" href="{{href}}">{{title}}</a></li>
+        {{/articles}}
+      </ul>
+    </div>
+  </body>
+</html>

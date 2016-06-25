@@ -1,0 +1,9 @@
+*.html
+*.png
+*.pdf
+*.tex
+**/*/auto
+*.csv
+*.h5
+node_modules/
+build/
